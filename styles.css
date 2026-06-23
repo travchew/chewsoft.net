@@ -1,0 +1,24 @@
+body {
+  max-width: 512px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #111;
+  background: #f7f7f7;
+}
+
+h1,
+h2 {
+  margin-top: 1.5rem;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 2rem 0;
+}
