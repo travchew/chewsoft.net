@@ -1,5 +1,5 @@
 body {
-  max-width: 512px;
+  max-width: 536px;
   margin: 0 auto;
   padding: 0 1rem;
   font-family: system-ui, sans-serif;
@@ -8,17 +8,30 @@ body {
   background: #f7f7f7;
 }
 
+p {
+  font-family: "Iwata Maru Gothic W55", medium;
+}
+
 h1,
 h2 {
-  margin-top: 1.5rem;
+  font-family: "Iwata Maru Gothic W55", serif;
+  font-size: 1.25rem;
 }
 
 h1 {
-  font-size: 2rem;
+  font-family: "Acidic", regular;
+  font-size: 3rem;
 }
 
 hr {
   border: none;
   border-top: 1px solid #ccc;
   margin: 2rem 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 2rem auto;
 }
