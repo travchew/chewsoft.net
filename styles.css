@@ -1,5 +1,5 @@
 body {
-  max-width: 640px;
+  max-width: 560px;
   margin: 0 auto;
   padding: 0 1rem;
   font-family: system-ui, sans-serif;
@@ -29,6 +29,13 @@ body {
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Aura";
+  src: url("./fonts/Aura.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+
 p {
   font-family: "Lunchtype 25", sans-serif;
   font-weight: 400;
@@ -41,10 +48,15 @@ h2 {
 }
 
 h1 {
-  font-family: "Lunchtype 24", sans-serif;
+  font-family: "Aura", sans-serif;
   font-weight: 400;
   font-size: 3rem;
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 0rem 0;
+}
+
+h1 a {
+  color: inherit;
+  text-decoration: none;
 }
 
 hr {
