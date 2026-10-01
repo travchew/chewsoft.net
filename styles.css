@@ -23,8 +23,8 @@ body {
 }
 
 @font-face {
-  font-family: "Aura";
-  src: url("./fonts/Aura.otf") format("opentype");
+  font-family: "Lunchtype 24";
+  src: url("./fonts/Lunchtype24-Medium-Expanded.ttf") format("opentype");
   font-weight: 400;
   font-display: swap;
 }
@@ -41,7 +41,7 @@ h2 {
 }
 
 h1 {
-  font-family: "Aura", sans-serif;
+  font-family: "Lunchtype 24", sans-serif;
   font-weight: 400;
   font-size: 3rem;
   margin: 0 0 0.25rem 0;
