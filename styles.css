@@ -39,18 +39,19 @@ body {
 p {
   font-family: "Lunchtype 25", sans-serif;
   font-weight: 400;
+  font-size: 14pt;
 }
 
 h2 {
   font-family: "Lunchtype 25", sans-serif;
   font-weight: 500;
-  font-size: 1.25rem;
+  font-size: 24pt;
 }
 
 h1 {
   font-family: "Aura", sans-serif;
   font-weight: 400;
-  font-size: 3rem;
+  font-size: 48pt;
   margin: 0 0 0rem 0;
 }
 
