@@ -7,8 +7,8 @@
 <style>
 :root { --bg:#0e0e10; --fg:#eaeaea; --dim:#888; --accent:#ffcc33; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; align-items:center; padding:16px; gap:12px; }
-#screen { width:100%; max-width:960px; aspect-ratio:16/9; background:#000; position:relative; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; align-items:center; padding:8px 16px; gap:10px; }
+#screen { width:min(100%, calc((100vh - 110px) * 16 / 9)); aspect-ratio:16/9; background:#000; position:relative; }
 #screen iframe { width:100%; height:100%; display:block; }
 #osd { position:absolute; top:12px; left:16px; font:bold 28px monospace; color:#3f3; text-shadow:0 0 6px #000; pointer-events:none; opacity:0; transition:opacity .4s; }
 #osd.show { opacity:1; }
@@ -16,7 +16,7 @@ body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui,
 button { background:#222; color:var(--fg); border:1px solid #444; padding:10px 16px; border-radius:6px; font-size:15px; cursor:pointer; }
 button:hover { border-color:var(--accent); }
 #now { color:var(--dim); text-align:center; min-height:1.4em; }
-details { width:100%; max-width:960px; }
+details { width:100%; }
 textarea { width:100%; height:140px; background:#151518; color:var(--fg); border:1px solid #333; padding:8px; font:13px monospace; margin-top:8px; }
 </style>
 </head>
@@ -24,8 +24,12 @@ textarea { width:100%; height:140px; background:#151518; color:var(--fg); border
 <div id="screen"><div id="player"></div><div id="osd"></div></div>
 <div id="now">loading...</div>
 <div class="controls">
-	<button id="chan">change channel (C / →)</button>
-	<button id="next">another from this channel (N / ↓)</button>
+	<button id="down">ch ▼ (x)</button>
+	<button id="up">ch ▲ (s)</button>
+	<button id="next">another (z)</button>
+	<button id="back">back (k)</button>
+	<button id="fwd">forward (l)</button>
+	<button id="restart">restart (0)</button>
 </div>
 <details>
 	<summary>edit channels</summary>
@@ -49,7 +53,8 @@ channel 10 | https://www.youtube.com/watch?v=yFkogsefN7k&list=PLwHe3adVvgry4rxY7
 channel 11 | https://www.youtube.com/watch?v=hQEWa5R3m4U&list=PLCloiJ2glw57dII4YOmOREKtV3-bs1CHJ
 channel 12 | https://www.youtube.com/watch?v=Mmw-PpWhKFg&list=PLJP5_qSxMbkL6S02p9PEBKjnGPtPoo1yI`;
 
-let channels = [], current = -1, pendingRandom = false, pendingSeek = false, player;
+let channels = [], current = -1, pendingRandom = false, pendingSeek = null, recordNext = false, player;
+let hist = [], pos = -1;
 const $ = id => document.getElementById(id);
 
 function parse(text) {
@@ -72,8 +77,8 @@ channels = parse($('list').value);
 $('save').onclick = () => {
 	channels = parse($('list').value);
 	try { localStorage.setItem('surfer-channels-v3', $('list').value); } catch {}
-	current = -1;
-	changeChannel();
+	hist = []; pos = -1;
+	tune(rand(channels.length, -1));
 };
 
 function osd(text) {
@@ -84,6 +89,10 @@ function osd(text) {
 	osd.t = setTimeout(() => el.classList.remove('show'), 2000);
 }
 
+function showChannel() {
+	osd(`CH ${String(current + 1).padStart(2, '0')} ${channels[current].name}`);
+}
+
 function rand(n, avoid) {
 	if (n <= 1) return 0;
 	let i;
@@ -91,21 +100,49 @@ function rand(n, avoid) {
 	return i;
 }
 
-function changeChannel() {
+function saveSpot() {
+	// remember where you left off so back/forward resumes there
+	if (pos < 0 || !player.getCurrentTime) return;
+	const h = hist[pos];
+	if (h.ch === current) { h.idx = player.getPlaylistIndex(); h.t = player.getCurrentTime(); }
+}
+
+function tune(ch) {
 	if (!player || !channels.length) return;
-	current = rand(channels.length, current);
+	saveSpot();
+	current = (ch + channels.length) % channels.length;
 	pendingRandom = true;
-	pendingSeek = true;
+	pendingSeek = 'random';
+	recordNext = true;
 	player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: 0 });
-	osd(`CH ${String(current + 1).padStart(2, '0')} ${channels[current].name}`);
+	showChannel();
 }
 
 function nextVideo() {
 	const list = player && player.getPlaylist();
 	if (!list || !list.length) return;
-	pendingSeek = true;
+	saveSpot();
+	pendingSeek = 'random';
+	recordNext = true;
 	player.playVideoAt(rand(list.length, player.getPlaylistIndex()));
-	osd(`CH ${String(current + 1).padStart(2, '0')} ↻`);
+	showChannel();
+}
+
+function goHistory(step) {
+	const p = pos + step;
+	if (!player || p < 0 || p >= hist.length) return;
+	saveSpot();
+	pos = p;
+	const h = hist[p];
+	pendingRandom = false;
+	recordNext = false;
+	pendingSeek = h.t || 0;
+	if (h.ch === current) player.playVideoAt(h.idx);
+	else {
+		current = h.ch;
+		player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: h.idx });
+	}
+	showChannel();
 }
 
 function onStateChange(e) {
@@ -116,40 +153,59 @@ function onStateChange(e) {
 		const i = rand(list.length, -1);
 		if (i !== player.getPlaylistIndex()) { player.playVideoAt(i); return; }
 	}
-	if (e.data === YT.PlayerState.PLAYING) {
-		// drop in partway through, like tuning into live tv
-		const dur = player.getDuration();
-		if (pendingSeek && dur > 0) {
-			pendingSeek = false;
-			if (dur > 30) player.seekTo(dur * (0.05 + Math.random() * 0.75), true);
-		}
-		const d = player.getVideoData();
-		$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}`;
+	if (pendingRandom || e.data !== YT.PlayerState.PLAYING) return;
+	if (recordNext) {
+		recordNext = false;
+		hist = hist.slice(0, pos + 1);
+		hist.push({ ch: current, idx: player.getPlaylistIndex(), t: 0 });
+		pos = hist.length - 1;
 	}
+	const dur = player.getDuration();
+	if (pendingSeek !== null && dur > 0) {
+		const target = pendingSeek;
+		pendingSeek = null;
+		// random drop-in stays within the first 30%
+		if (target === 'random') { if (dur > 30) player.seekTo(dur * Math.random() * 0.3, true); }
+		else if (target > 0) player.seekTo(target, true);
+	}
+	const d = player.getVideoData();
+	$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}`;
 }
 
 function onError() {
 	// skip videos that can't be embedded; skip the channel if its playlist won't load
 	const list = player.getPlaylist();
-	setTimeout(list && list.length > 1 ? nextVideo : changeChannel, 1500);
+	setTimeout(list && list.length > 1 ? nextVideo : () => tune(current + 1), 1500);
 }
 
 window.onYouTubeIframeAPIReady = () => {
 	player = new YT.Player('player', {
 		width: '100%', height: '100%',
 		playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
-		events: { onReady: changeChannel, onStateChange, onError }
+		events: { onReady: () => tune(rand(channels.length, -1)), onStateChange, onError }
 	});
 };
 
-$('chan').onclick = changeChannel;
-$('next').onclick = nextVideo;
+const actions = {
+	's': () => tune(current + 1),
+	'x': () => tune(current - 1),
+	'z': nextVideo,
+	'k': () => goHistory(-1),
+	'l': () => goHistory(1),
+	'0': () => player && player.seekTo(0, true)
+};
+
+$('up').onclick = actions.s;
+$('down').onclick = actions.x;
+$('next').onclick = actions.z;
+$('back').onclick = actions.k;
+$('fwd').onclick = actions.l;
+$('restart').onclick = actions['0'];
 
 document.addEventListener('keydown', e => {
-	if (e.target.tagName === 'TEXTAREA') return;
-	const k = e.key.toLowerCase();
-	if (k === 'c' || k === 'arrowright') { e.preventDefault(); changeChannel(); }
-	if (k === 'n' || k === 'arrowdown') { e.preventDefault(); nextVideo(); }
+	if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+	const fn = actions[e.key.toLowerCase()];
+	if (fn) { e.preventDefault(); fn(); }
 });
 </script>
 <script src="https://www.youtube.com/iframe_api"></script>
