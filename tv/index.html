@@ -49,7 +49,7 @@ channel 10 | https://www.youtube.com/watch?v=yFkogsefN7k&list=PLwHe3adVvgry4rxY7
 channel 11 | https://www.youtube.com/watch?v=hQEWa5R3m4U&list=PLCloiJ2glw57dII4YOmOREKtV3-bs1CHJ
 channel 12 | https://www.youtube.com/watch?v=Mmw-PpWhKFg&list=PLJP5_qSxMbkL6S02p9PEBKjnGPtPoo1yI`;
 
-let channels = [], current = -1, pendingRandom = false, player;
+let channels = [], current = -1, pendingRandom = false, pendingSeek = false, player;
 const $ = id => document.getElementById(id);
 
 function parse(text) {
@@ -95,6 +95,7 @@ function changeChannel() {
 	if (!player || !channels.length) return;
 	current = rand(channels.length, current);
 	pendingRandom = true;
+	pendingSeek = true;
 	player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: 0 });
 	osd(`CH ${String(current + 1).padStart(2, '0')} ${channels[current].name}`);
 }
@@ -102,6 +103,7 @@ function changeChannel() {
 function nextVideo() {
 	const list = player && player.getPlaylist();
 	if (!list || !list.length) return;
+	pendingSeek = true;
 	player.playVideoAt(rand(list.length, player.getPlaylistIndex()));
 	osd(`CH ${String(current + 1).padStart(2, '0')} ↻`);
 }
@@ -115,6 +117,12 @@ function onStateChange(e) {
 		if (i !== player.getPlaylistIndex()) { player.playVideoAt(i); return; }
 	}
 	if (e.data === YT.PlayerState.PLAYING) {
+		// drop in partway through, like tuning into live tv
+		const dur = player.getDuration();
+		if (pendingSeek && dur > 0) {
+			pendingSeek = false;
+			if (dur > 30) player.seekTo(dur * (0.05 + Math.random() * 0.75), true);
+		}
 		const d = player.getVideoData();
 		$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}`;
 	}
