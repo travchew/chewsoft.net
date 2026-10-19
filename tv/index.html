@@ -24,12 +24,12 @@ textarea { width:100%; height:140px; background:#151518; color:var(--fg); border
 <div id="screen"><div id="player"></div><div id="osd"></div></div>
 <div id="now">loading...</div>
 <div class="controls">
-	<button id="down">ch ▼ (x)</button>
-	<button id="up">ch ▲ (s)</button>
-	<button id="next">another (z)</button>
-	<button id="back">back (k)</button>
-	<button id="fwd">forward (l)</button>
-	<button id="restart">restart (0)</button>
+	<button id="down">ch ▼ (x / d-pad ↓)</button>
+	<button id="up">ch ▲ (s / d-pad ↑)</button>
+	<button id="next">another (z / ✕)</button>
+	<button id="back">back (k / L1)</button>
+	<button id="fwd">forward (l / R1)</button>
+	<button id="restart">restart (0 / □)</button>
 </div>
 <details>
 	<summary>edit channels</summary>
@@ -223,6 +223,24 @@ $('next').onclick = actions.z;
 $('back').onclick = actions.k;
 $('fwd').onclick = actions.l;
 $('restart').onclick = actions['0'];
+
+// ps5 / standard gamepad: square, dpad up/down, cross, l1, r1
+const padMap = { 2: '0', 12: 's', 13: 'x', 0: 'z', 4: 'k', 5: 'l' };
+let padPrev = {};
+function pollPads() {
+	for (const pad of navigator.getGamepads ? navigator.getGamepads() : []) {
+		if (!pad) continue;
+		const prev = padPrev[pad.index] || [];
+		const now = pad.buttons.map(b => b.pressed);
+		for (const btn in padMap) {
+			if (now[btn] && !prev[btn]) { enableSound(); actions[padMap[btn]](); }
+		}
+		padPrev[pad.index] = now;
+	}
+	requestAnimationFrame(pollPads);
+}
+window.addEventListener('gamepadconnected', e => osd(`controller connected`));
+requestAnimationFrame(pollPads);
 
 document.addEventListener('keydown', e => {
 	if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
