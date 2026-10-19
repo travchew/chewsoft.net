@@ -54,7 +54,7 @@ channel 11 | https://www.youtube.com/watch?v=hQEWa5R3m4U&list=PLCloiJ2glw57dII4Y
 channel 12 | https://www.youtube.com/watch?v=Mmw-PpWhKFg&list=PLJP5_qSxMbkL6S02p9PEBKjnGPtPoo1yI`;
 
 let channels = [], current = -1, pendingRandom = false, pendingSeek = null, recordNext = false, player;
-let hist = [], pos = -1;
+let hist = [], pos = -1, sound = false, alive = false, watchdog;
 const $ = id => document.getElementById(id);
 
 function parse(text) {
@@ -107,14 +107,33 @@ function saveSpot() {
 	if (h.ch === current) { h.idx = player.getPlaylistIndex(); h.t = player.getCurrentTime(); }
 }
 
+function build(index) {
+	// a fresh player per channel; loadPlaylist on one player stops responding after a few switches
+	if (player && player.destroy) player.destroy();
+	if (!$('player')) { const el = document.createElement('div'); el.id = 'player'; $('screen').prepend(el); }
+	player = new YT.Player('player', {
+		width: '100%', height: '100%',
+		playerVars: { autoplay: 1, rel: 0, playsinline: 1, mute: sound ? 0 : 1, listType: 'playlist', list: channels[current].id, index },
+		events: { onReady: e => e.target.playVideo(), onStateChange, onError }
+	});
+	arm(index);
+}
+
+function arm(index) {
+	// if the player goes silent after a switch, rebuild it
+	alive = false;
+	clearTimeout(watchdog);
+	watchdog = setTimeout(() => { if (!alive) build(index); }, 8000);
+}
+
 function tune(ch) {
-	if (!player || !channels.length) return;
+	if (!window.YT || !YT.Player || !channels.length) return;
 	saveSpot();
 	current = (ch + channels.length) % channels.length;
 	pendingRandom = true;
 	pendingSeek = 'random';
 	recordNext = true;
-	player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: 0 });
+	build(0);
 	showChannel();
 }
 
@@ -124,7 +143,9 @@ function nextVideo() {
 	saveSpot();
 	pendingSeek = 'random';
 	recordNext = true;
-	player.playVideoAt(rand(list.length, player.getPlaylistIndex()));
+	const i = rand(list.length, player.getPlaylistIndex());
+	player.playVideoAt(i);
+	arm(i);
 	showChannel();
 }
 
@@ -137,15 +158,13 @@ function goHistory(step) {
 	pendingRandom = false;
 	recordNext = false;
 	pendingSeek = h.t || 0;
-	if (h.ch === current) player.playVideoAt(h.idx);
-	else {
-		current = h.ch;
-		player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: h.idx });
-	}
+	if (h.ch === current) { player.playVideoAt(h.idx); arm(h.idx); }
+	else { current = h.ch; build(h.idx); }
 	showChannel();
 }
 
 function onStateChange(e) {
+	alive = true;
 	// the playlist length is only known once it loads, so jump to a random video then
 	const list = player.getPlaylist();
 	if (pendingRandom && list && list.length) {
@@ -154,6 +173,7 @@ function onStateChange(e) {
 		if (i !== player.getPlaylistIndex()) { player.playVideoAt(i); return; }
 	}
 	if (pendingRandom || e.data !== YT.PlayerState.PLAYING) return;
+	if (sound && player.isMuted()) player.unMute();
 	if (recordNext) {
 		recordNext = false;
 		hist = hist.slice(0, pos + 1);
@@ -169,7 +189,7 @@ function onStateChange(e) {
 		else if (target > 0) player.seekTo(target, true);
 	}
 	const d = player.getVideoData();
-	$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}`;
+	$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}${sound ? '' : ' (click or press any key for sound)'}`;
 }
 
 function onError() {
@@ -178,13 +198,15 @@ function onError() {
 	setTimeout(list && list.length > 1 ? nextVideo : () => tune(current + 1), 1500);
 }
 
-window.onYouTubeIframeAPIReady = () => {
-	player = new YT.Player('player', {
-		width: '100%', height: '100%',
-		playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
-		events: { onReady: () => tune(rand(channels.length, -1)), onStateChange, onError }
-	});
-};
+window.onYouTubeIframeAPIReady = () => tune(rand(channels.length, -1));
+
+function enableSound() {
+	// browsers only allow sound after you interact, so start muted and unmute on the first key or click
+	if (sound) return;
+	sound = true;
+	if (player && player.unMute) { player.unMute(); player.playVideo(); }
+}
+document.addEventListener('pointerdown', enableSound);
 
 const actions = {
 	's': () => tune(current + 1),
@@ -192,7 +214,7 @@ const actions = {
 	'z': nextVideo,
 	'k': () => goHistory(-1),
 	'l': () => goHistory(1),
-	'0': () => player && player.seekTo(0, true)
+	'0': () => player && player.seekTo && player.seekTo(0, true)
 };
 
 $('up').onclick = actions.s;
@@ -204,6 +226,7 @@ $('restart').onclick = actions['0'];
 
 document.addEventListener('keydown', e => {
 	if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+	enableSound();
 	const fn = actions[e.key.toLowerCase()];
 	if (fn) { e.preventDefault(); fn(); }
 });
