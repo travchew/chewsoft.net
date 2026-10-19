@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Channel Surfer</title>
+<style>
+:root { --bg:#0e0e10; --fg:#eaeaea; --dim:#888; --accent:#ffcc33; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; display:flex; flex-direction:column; align-items:center; padding:16px; gap:12px; }
+#screen { width:100%; max-width:960px; aspect-ratio:16/9; background:#000; position:relative; }
+#screen iframe { width:100%; height:100%; display:block; }
+#osd { position:absolute; top:12px; left:16px; font:bold 28px monospace; color:#3f3; text-shadow:0 0 6px #000; pointer-events:none; opacity:0; transition:opacity .4s; }
+#osd.show { opacity:1; }
+.controls { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+button { background:#222; color:var(--fg); border:1px solid #444; padding:10px 16px; border-radius:6px; font-size:15px; cursor:pointer; }
+button:hover { border-color:var(--accent); }
+#now { color:var(--dim); text-align:center; min-height:1.4em; }
+details { width:100%; max-width:960px; }
+textarea { width:100%; height:140px; background:#151518; color:var(--fg); border:1px solid #333; padding:8px; font:13px monospace; margin-top:8px; }
+</style>
+</head>
+<body>
+<div id="screen"><div id="player"></div><div id="osd"></div></div>
+<div id="now">loading...</div>
+<div class="controls">
+	<button id="chan">change channel (C / →)</button>
+	<button id="next">another from this channel (N / ↓)</button>
+</div>
+<details>
+	<summary>edit channels</summary>
+	<textarea id="list" spellcheck="false"></textarea>
+	<button id="save">save channels</button>
+	<p style="color:var(--dim)">one per line: <code>name | playlist url or id</code>. playlists must be public or unlisted.</p>
+</details>
+
+<script>
+// put your playlists here, or edit them in the page
+const DEFAULTS = `multimedia | https://www.youtube.com/playlist?list=PLwHe3adVvgrw2GdexpDn8tlXjZITSJPgs
+watch later | https://www.youtube.com/watch?v=EfDomtxxFtY&list=PLHc1der_yD5o
+inside nintendo | https://www.youtube.com/watch?v=zt2i51CZZ5M&list=PLRxF-rZqSH68
+best of youtube | https://www.youtube.com/watch?v=V7AfAcQwLW0&list=PLwHe3adVvgrwQa0UUefIEKJsuWXK1XVqJ
+bad music | https://www.youtube.com/watch?v=wrB7siccyLQ&list=PLwHe3adVvgrzYlEFoGb4NyOf3AIM1ncpA
+good | https://www.youtube.com/watch?v=A6cSbof7Pik&list=PLwHe3adVvgrzYKSSGkCViUWJLqQcCI0hA
+channel 7 | https://www.youtube.com/watch?v=Owiwn4Iwj_E&list=PLqRNOagVZDVcVugHZ3mnhjYuVEhJFGesl
+channel 8 | https://www.youtube.com/watch?v=bPDBSyCqYw8&list=PLwHe3adVvgrzaKvLg9uk88t2S5Z00TqKT
+channel 9 | https://www.youtube.com/watch?v=p6sDHM58tm4&list=PLAIAHfJvz15mO-Ir0Hcx4JZZEVMPcvfaw
+channel 10 | https://www.youtube.com/watch?v=yFkogsefN7k&list=PLwHe3adVvgry4rxY7N6eIL5AgHVp59gWw
+channel 11 | https://www.youtube.com/watch?v=hQEWa5R3m4U&list=PLCloiJ2glw57dII4YOmOREKtV3-bs1CHJ
+channel 12 | https://www.youtube.com/watch?v=Mmw-PpWhKFg&list=PLJP5_qSxMbkL6S02p9PEBKjnGPtPoo1yI`;
+
+let channels = [], current = -1, pendingRandom = false, player;
+const $ = id => document.getElementById(id);
+
+function parse(text) {
+	return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+		const parts = l.split('|').map(s => s.trim());
+		const raw = parts.length > 1 ? parts[1] : parts[0];
+		const m = raw.match(/[?&]list=([\w-]+)/);
+		const id = m ? m[1] : raw;
+		return { name: parts.length > 1 ? parts[0] : id, id };
+	});
+}
+
+function loadSaved() {
+	try { return localStorage.getItem('surfer-channels-v3') || DEFAULTS; } catch { return DEFAULTS; }
+}
+
+$('list').value = loadSaved();
+channels = parse($('list').value);
+
+$('save').onclick = () => {
+	channels = parse($('list').value);
+	try { localStorage.setItem('surfer-channels-v3', $('list').value); } catch {}
+	current = -1;
+	changeChannel();
+};
+
+function osd(text) {
+	const el = $('osd');
+	el.textContent = text;
+	el.classList.add('show');
+	clearTimeout(osd.t);
+	osd.t = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+function rand(n, avoid) {
+	if (n <= 1) return 0;
+	let i;
+	do { i = Math.floor(Math.random() * n); } while (i === avoid);
+	return i;
+}
+
+function changeChannel() {
+	if (!player || !channels.length) return;
+	current = rand(channels.length, current);
+	pendingRandom = true;
+	player.loadPlaylist({ list: channels[current].id, listType: 'playlist', index: 0 });
+	osd(`CH ${String(current + 1).padStart(2, '0')} ${channels[current].name}`);
+}
+
+function nextVideo() {
+	const list = player && player.getPlaylist();
+	if (!list || !list.length) return;
+	player.playVideoAt(rand(list.length, player.getPlaylistIndex()));
+	osd(`CH ${String(current + 1).padStart(2, '0')} ↻`);
+}
+
+function onStateChange(e) {
+	// the playlist length is only known once it loads, so jump to a random video then
+	const list = player.getPlaylist();
+	if (pendingRandom && list && list.length) {
+		pendingRandom = false;
+		const i = rand(list.length, -1);
+		if (i !== player.getPlaylistIndex()) { player.playVideoAt(i); return; }
+	}
+	if (e.data === YT.PlayerState.PLAYING) {
+		const d = player.getVideoData();
+		$('now').textContent = `${channels[current]?.name ?? ''} — ${d.title}`;
+	}
+}
+
+function onError() {
+	// skip videos that can't be embedded; skip the channel if its playlist won't load
+	const list = player.getPlaylist();
+	setTimeout(list && list.length > 1 ? nextVideo : changeChannel, 1500);
+}
+
+window.onYouTubeIframeAPIReady = () => {
+	player = new YT.Player('player', {
+		width: '100%', height: '100%',
+		playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+		events: { onReady: changeChannel, onStateChange, onError }
+	});
+};
+
+$('chan').onclick = changeChannel;
+$('next').onclick = nextVideo;
+
+document.addEventListener('keydown', e => {
+	if (e.target.tagName === 'TEXTAREA') return;
+	const k = e.key.toLowerCase();
+	if (k === 'c' || k === 'arrowright') { e.preventDefault(); changeChannel(); }
+	if (k === 'n' || k === 'arrowdown') { e.preventDefault(); nextVideo(); }
+});
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
